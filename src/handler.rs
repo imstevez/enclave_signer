@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use strum_macros::{Display, EnumString};
 use tracing::info;
+use tracing::instrument;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InfoRes {
@@ -52,12 +53,11 @@ pub struct GenerateRes {
     pub encrypted_data_key: String,
 }
 
+#[instrument(skip(state))]
 pub async fn generate(
     State(state): State<Arc<EnclaveState>>,
     Json(req): Json<GenerateReq>,
 ) -> (StatusCode, Json<Res<GenerateRes>>) {
-    info!("Receive generate req: {:?}", req);
-
     let doc = match state.attest() {
         Err(err) => return Res::internal_err(anyhow!("attest document: {}", err)),
         Ok(doc) => doc,
@@ -138,6 +138,7 @@ pub struct SignRes {
     pub signature: String,
 }
 
+#[instrument(skip(state))]
 pub async fn sign(
     State(state): State<Arc<EnclaveState>>,
     Json(req): Json<SignReq>,
@@ -222,6 +223,7 @@ pub struct PCRsRep {
     pub pcrs: Vec<PCR>,
 }
 
+#[instrument(skip(state))]
 pub async fn pcrs(State(state): State<Arc<EnclaveState>>) -> (StatusCode, Json<Res<PCRsRep>>) {
     info!("Receive pcrs req");
 

@@ -1,6 +1,6 @@
 [package]
 name = "enclave_signer"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 
 [dependencies]
@@ -24,7 +24,6 @@ aws-nitro-enclaves-cose = "0.5.2"
 serde_cbor = { version = "0.11.2" }
 ethers = { version = "2.0.14" }
 aes-gcm = { version = "0.10.3", features = ["default"] }
-eth_checksum = "0.1.2"
 reqwest = { version = "0.12.23", features = ["json"] }
 strum_macros = "0.27.2"
 strum = "0.27.2"

@@ -3,6 +3,7 @@ use aes_gcm::{
     aead::{Aead, OsRng, rand_core::RngCore},
 };
 use anyhow::{Result, anyhow};
+use aws_nitro_enclaves_cose::{CoseSign1, crypto::Openssl};
 use aws_nitro_enclaves_nsm_api::api::AttestationDoc;
 use aws_sdk_kms::types::KeyEncryptionMechanism::RsaesOaepSha256;
 use aws_sdk_kms::types::RecipientInfo;
@@ -12,15 +13,14 @@ use ethers::signers::{LocalWallet, Signer};
 use ethers::utils;
 use solana_sdk::signature::{Keypair, SeedDerivable, Signer as SolSigner};
 
+pub fn to_err<T: ToString>(e: T) -> anyhow::Error {
+    anyhow!(e.to_string())
+}
+
 pub fn parse_attestation_doc(doc: &[u8]) -> Result<AttestationDoc> {
-    let doc_cose =
-        aws_nitro_enclaves_cose::CoseSign1::from_bytes(doc).map_err(|e| anyhow!(e.to_string()))?;
-
-    let doc_payload: Vec<u8> = doc_cose
-        .get_payload::<aws_nitro_enclaves_cose::crypto::Openssl>(None)
-        .map_err(|e| anyhow!(e.to_string()))?;
-
-    serde_cbor::from_slice(&doc_payload).map_err(|e| anyhow!(e.to_string()))
+    let doc_cose = CoseSign1::from_bytes(doc).map_err(to_err)?;
+    let doc_payload: Vec<u8> = doc_cose.get_payload::<Openssl>(None).map_err(to_err)?;
+    serde_cbor::from_slice(&doc_payload).map_err(to_err)
 }
 
 pub fn build_kms_recipient(doc: &[u8]) -> RecipientInfo {
@@ -31,24 +31,23 @@ pub fn build_kms_recipient(doc: &[u8]) -> RecipientInfo {
 }
 
 pub fn generate_evm_account() -> Result<(String, Vec<u8>, Vec<u8>)> {
-    let mut rng = rand::thread_rng();
+    let sig_key = SigningKey::random(&mut rand::thread_rng());
+    let ver_key = VerifyingKey::from(&sig_key);
 
-    let signing_key = SigningKey::random(&mut rng);
-    let verifying_key = VerifyingKey::from(&signing_key);
-
-    let address = utils::public_key_to_address(&verifying_key);
-    let address = eth_checksum::checksum(&hex::encode(address.as_bytes()));
-    let public = verifying_key.to_encoded_point(false).as_bytes().to_vec();
-    let private = signing_key.to_bytes().to_vec();
+    let address = utils::to_checksum(&utils::public_key_to_address(&ver_key), None);
+    let public = ver_key.to_encoded_point(false).as_bytes().to_vec();
+    let private = sig_key.to_bytes().to_vec();
 
     Ok((address, public, private))
 }
 
 pub fn generate_sol_account() -> Result<(String, Vec<u8>, Vec<u8>)> {
     let keypair = Keypair::new();
+
     let address = keypair.pubkey().to_string();
     let public = keypair.pubkey().to_bytes().to_vec();
     let private = keypair.to_bytes().to_vec();
+
     Ok((address, public, private))
 }
 
@@ -59,7 +58,7 @@ pub fn encrypt(content: &[u8], key: &[u8]) -> Result<Vec<u8>> {
     OsRng.fill_bytes(&mut nonce);
     let nonce = Nonce::from_slice(&nonce);
 
-    let ciphertext = cipher.encrypt(nonce, content).map_err(|e| anyhow!(e))?;
+    let ciphertext = cipher.encrypt(nonce, content).map_err(to_err)?;
 
     let mut result = Vec::new();
     result.extend_from_slice(nonce);
@@ -75,19 +74,17 @@ pub fn decrypt(content: &[u8], key: &[u8]) -> Result<Vec<u8>> {
 
     let nonce = Nonce::from_slice(&content[..12]);
     let ciphertext = &content[12..];
-
     let cipher = Aes256Gcm::new_from_slice(key)?;
 
-    cipher.decrypt(nonce, ciphertext).map_err(|e| anyhow!(e))
+    cipher.decrypt(nonce, ciphertext).map_err(to_err)
 }
 
 pub async fn sign_evm_message(private: &[u8], message: &str) -> Result<Vec<u8>> {
     let wallet = LocalWallet::from_bytes(private)?;
 
-    let message_bytes = if let Ok(bytes) = hex::decode(message.trim_start_matches("0x")) {
-        bytes
-    } else {
-        message.as_bytes().to_vec()
+    let message_bytes = match hex::decode(message.trim_start_matches("0x")) {
+        Ok(bytes) => bytes,
+        Err(_) => message.as_bytes().to_vec(),
     };
 
     let signature = wallet.sign_message(&message_bytes).await?;
@@ -113,74 +110,107 @@ pub fn clear_vec(mut vec: Vec<u8>) {
     vec.fill(0)
 }
 
-#[test]
-fn test_generate_evm_account() {
-    let (address, public, private) = generate_evm_account().unwrap();
-    println!(
-        "address: {}\n public: 0x{}\n private: 0x{}\n",
-        &address,
-        hex::encode(public),
-        hex::encode(private)
-    );
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ethers::abi::ethereum_types;
+    use solana_sdk::pubkey::Pubkey;
+    use std::str::FromStr;
 
-#[test]
-fn test_generate_sol_account() {
-    let (address, public, private) = generate_sol_account().unwrap();
-    println!(
-        "address: {}\n public: 0x{}\n private: 0x{}\n",
-        address,
-        hex::encode(public),
-        hex::encode(private)
-    );
-}
+    #[tokio::test]
+    async fn test_generate_evm_account() {
+        let (address, public, private) = generate_evm_account().unwrap();
+        println!(
+            "address: {address}\npublic: {}\nprivate: {}\n",
+            hex::encode(&public),
+            hex::encode(&private)
+        );
 
-#[tokio::test]
-async fn test_sign_sol() -> Result<()> {
-    let prv =
-        "51Y9KYpmMu1fw8Mjv2vhySjcGK7mSEwRbvrh63novRiaiLcPt62usSHcDcdUyKNo7462Az3jbSuTVcuZH9CiPWdh";
-    let keypair = Keypair::from_base58_string(&prv);
-    let keypair_bytes = keypair.to_bytes().to_vec();
+        let address_from_result = ethereum_types::Address::from_slice(
+            &hex::decode(address.trim_start_matches("0x")).unwrap(),
+        );
 
-    let msg = "hello";
+        let address_from_public =
+            utils::public_key_to_address(&VerifyingKey::from_sec1_bytes(&public).unwrap());
 
-    let sig_o = keypair.sign_message(msg.as_bytes()).as_array().to_vec();
+        assert_eq!(address_from_result, address_from_public);
 
-    let sig = sign_sol_message(&keypair_bytes, msg).await?;
+        let message = "hello";
 
-    assert_eq!(sig, sig_o);
+        let signature = LocalWallet::from_bytes(&private)
+            .unwrap()
+            .sign_message(message)
+            .await
+            .unwrap();
 
-    Ok(())
-}
+        signature.verify(message, address_from_result).unwrap();
+    }
 
-#[tokio::test]
-async fn test_sign_evm() {
-    let prv = "29483cab4ee87b490ba40c50459137922240a2c5e240fbd50118c5150976a0ae";
-    let prv_bytes = hex::decode(prv.trim_start_matches("0x")).unwrap();
-    let message = "hello";
-    let sig = sign_evm_message(&prv_bytes, message).await.unwrap();
-    println!("sig: {}", hex::encode(sig));
-}
+    #[test]
+    fn test_generate_sol_account() {
+        let (address, public, private) = generate_sol_account().unwrap();
+        println!(
+            "address: {}\npublic: {}\nprivate: {}\n",
+            address,
+            hex::encode(&public),
+            hex::encode(&private)
+        );
 
-#[test]
-fn test_encrypt_decrypt() {
-    let key_hex = "ac4565203d02b1325f6b974a718583c15200c3147e8a6f7763a84ec64768df09";
-    println!("key_hex: {}", key_hex);
-    let key_bytes = hex::decode(key_hex).unwrap();
+        let address_from_result = Pubkey::from_str(&address).unwrap();
 
-    let prv_hex = "29483cab4ee87b490ba40c50459137922240a2c5e240fbd50118c5150976a0ae";
-    println!("prv_hex: {}", prv_hex);
-    let prv_bytes = hex::decode(prv_hex.trim_start_matches("0x")).unwrap();
+        let address_from_public = Pubkey::try_from(public.clone()).unwrap();
 
-    let prv_enc_bytes = encrypt(&prv_bytes, &key_bytes).unwrap();
-    let prv_enc_hex = hex::encode(&prv_enc_bytes);
-    println!("prv_enc_hex: {}", prv_enc_hex);
+        assert_eq!(address_from_result, address_from_public);
 
-    let prv_bytes_dec = decrypt(&prv_enc_bytes, &key_bytes).unwrap();
-    assert_eq!(&prv_bytes_dec, &prv_bytes);
+        let message = "hello";
 
-    let prv_hex_dec = hex::encode(&prv_bytes_dec);
-    assert_eq!(prv_hex_dec, prv_hex);
+        let signature = Keypair::from_seed(&private)
+            .unwrap()
+            .sign_message(message.as_bytes());
 
-    println!("prv_hex_dec: {}", &prv_hex_dec);
+        assert!(signature.verify(&public, message.as_bytes()));
+    }
+
+    #[tokio::test]
+    async fn test_sign_evm_message() {
+        let message = "hello";
+        let private = "f32cc086c921c7758002afec8114da49cc86086e14ee69c20ba204deed1ebd2d";
+        let signature = "6a73266a8fd50dccd19389e1fd8ff6c6fac6760138d52feb38540d43c5ed314733b332c3675745483a89a8b18af2b16aceeaf68cff65051808d53566b067054c1b";
+
+        let signature_target = hex::decode(signature).unwrap();
+        let signature_result = sign_evm_message(&hex::decode(private).unwrap(), message)
+            .await
+            .unwrap();
+
+        assert_eq!(signature_result, signature_target);
+    }
+
+    #[tokio::test]
+    async fn test_sign_sol_message() {
+        let message = "hello";
+        let private = "51Y9KYpmMu1fw8Mjv2vhySjcGK7mSEwRbvrh63novRiaiLcPt62usSHcDcdUyKNo7462Az3jbSuTVcuZH9CiPWdh";
+        let signature = "c26e4a56027369a56052cda5f062c4a4569d657dbdc33086b2069d830c3ac5e41407e71707826a15f25bcecf371fb2dbc9a4589614fba51edf2a964d862c1b06";
+
+        let signature_target = hex::decode(signature).unwrap();
+        let signature_result =
+            sign_sol_message(&Keypair::from_base58_string(private).to_bytes(), message)
+                .await
+                .unwrap();
+
+        assert_eq!(signature_result, signature_target);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt() {
+        let key = "ac4565203d02b1325f6b974a718583c15200c3147e8a6f7763a84ec64768df09";
+        let key = hex::decode(key).unwrap();
+
+        let cnt = "29483cab4ee87b490ba40c50459137922240a2c5e240fbd50118c5150976a0ae";
+        let cnt = hex::decode(cnt).unwrap();
+
+        let cnt_enc = encrypt(&cnt, &key).unwrap();
+        let cnt_dec = decrypt(&cnt_enc, &key).unwrap();
+
+        assert_eq!(&cnt_dec, &cnt);
+    }
 }
