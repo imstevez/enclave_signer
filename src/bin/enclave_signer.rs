@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
     let state = EnclaveState::new()?;
 
     let app = Router::new()
-        .route("/ping", get(info))
+        .route("/", get(info))
         .route("/api/v1/generate", post(generate))
         .route("/api/v1/sign", post(sign))
         .route("/api/v1/pcrs", get(pcrs))
