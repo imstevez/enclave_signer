@@ -1,8 +1,8 @@
 use crate::enclave_state::EnclaveState;
 use crate::helper;
 use crate::helper::{
-    address_checksum, build_kms_recipient, clear_vec, decrypt, encrypt, generate_evm_account,
-    sign_message,
+    build_kms_recipient, clear_vec, decrypt, encrypt, generate_evm_account, sign_evm_message,
+    sign_sol_message,
 };
 use crate::response::Res;
 use anyhow::anyhow;
@@ -13,6 +13,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use strum_macros::{Display, EnumString};
 use tracing::info;
 
 pub async fn hello() -> &'static str {
@@ -20,10 +21,19 @@ pub async fn hello() -> &'static str {
     "pong"
 }
 
+#[derive(Debug, Serialize, Deserialize, Default, EnumString, Display)]
+pub enum AddressType {
+    #[default]
+    EVM,
+    Sol,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GenerateReq {
     pub kms_key_id: String,
     pub kms_key_region: String,
+    #[serde(default = "AddressType::default")]
+    pub address_type: AddressType,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -77,9 +87,15 @@ pub async fn generate(
         Some(value) => value.into_inner(),
     };
 
-    let (address, public, private) = match generate_evm_account() {
-        Err(err) => return Res::internal_err(anyhow!("generate evm account: {}", err)),
-        Ok(value) => value,
+    let (address, public, private) = match req.address_type {
+        AddressType::EVM => match generate_evm_account() {
+            Err(err) => return Res::internal_err(anyhow!("generate evm account: {}", err)),
+            Ok(value) => value,
+        },
+        AddressType::Sol => match generate_evm_account() {
+            Err(err) => return Res::internal_err(anyhow!("generate sol account: {}", err)),
+            Ok(value) => value,
+        },
     };
 
     let private_enc = match encrypt(&private, &key) {
@@ -91,7 +107,7 @@ pub async fn generate(
     clear_vec(private);
 
     Res::ok(GenerateRes {
-        address: address_checksum(&address),
+        address,
         public_key: hex::encode(&public),
         encrypted_private_key: hex::encode(&private_enc),
         encrypted_data_key: hex::encode(&key_enc),
@@ -105,6 +121,8 @@ pub struct SignReq {
     pub message: String,
     pub encrypted_private_key: String,
     pub encrypted_data_key: String,
+    #[serde(default = "AddressType::default")]
+    pub address_type: AddressType,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -167,9 +185,15 @@ pub async fn sign(
 
     clear_vec(key);
 
-    let signature = match sign_message(&private, &req.message).await {
-        Err(err) => return Res::internal_err(anyhow!("sign message: {}", err)),
-        Ok(value) => value,
+    let signature = match req.address_type {
+        AddressType::EVM => match sign_evm_message(&private, &req.message).await {
+            Err(err) => return Res::internal_err(anyhow!("sign evm message: {}", err)),
+            Ok(value) => value,
+        },
+        AddressType::Sol => match sign_sol_message(&private, &req.message).await {
+            Err(err) => return Res::internal_err(anyhow!("sign sol message: {}", err)),
+            Ok(value) => value,
+        },
     };
 
     clear_vec(private);
