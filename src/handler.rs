@@ -1,8 +1,8 @@
 use crate::enclave_state::EnclaveState;
 use crate::helper;
 use crate::helper::{
-    build_kms_recipient, clear_vec, decrypt, encrypt, generate_evm_account, sign_evm_message,
-    sign_sol_message,
+    build_kms_recipient, clear_vec, decrypt, encrypt, generate_evm_account, generate_sol_account,
+    sign_evm_message, sign_sol_message,
 };
 use crate::response::Res;
 use anyhow::anyhow;
@@ -16,16 +16,24 @@ use std::sync::Arc;
 use strum_macros::{Display, EnumString};
 use tracing::info;
 
-pub async fn hello() -> &'static str {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InfoRes {
+    pub name: String,
+    pub version: String,
+}
+pub async fn info() -> (StatusCode, Json<Res<InfoRes>>) {
     info!("Receive ping req");
-    "pong"
+    Res::ok(InfoRes {
+        name: env!("CARGO_PKG_NAME").to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, EnumString, Display)]
 pub enum AddressType {
     #[default]
     EVM,
-    Sol,
+    SOL,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -92,7 +100,7 @@ pub async fn generate(
             Err(err) => return Res::internal_err(anyhow!("generate evm account: {}", err)),
             Ok(value) => value,
         },
-        AddressType::Sol => match generate_evm_account() {
+        AddressType::SOL => match generate_sol_account() {
             Err(err) => return Res::internal_err(anyhow!("generate sol account: {}", err)),
             Ok(value) => value,
         },
@@ -190,7 +198,7 @@ pub async fn sign(
             Err(err) => return Res::internal_err(anyhow!("sign evm message: {}", err)),
             Ok(value) => value,
         },
-        AddressType::Sol => match sign_sol_message(&private, &req.message).await {
+        AddressType::SOL => match sign_sol_message(&private, &req.message).await {
             Err(err) => return Res::internal_err(anyhow!("sign sol message: {}", err)),
             Ok(value) => value,
         },
