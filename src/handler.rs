@@ -96,11 +96,11 @@ pub async fn generate(
     };
 
     let (address, public, private) = match req.address_type {
-        AddressType::EVM => match generate_evm_account() {
+        AddressType::Evm => match generate_evm_account() {
             Err(err) => return Res::internal_err(anyhow!("generate evm account: {}", err)),
             Ok(value) => value,
         },
-        AddressType::SOL => match generate_sol_account() {
+        AddressType::Sol => match generate_sol_account() {
             Err(err) => return Res::internal_err(anyhow!("generate sol account: {}", err)),
             Ok(value) => value,
         },
@@ -195,11 +195,11 @@ pub async fn sign(
     clear_vec(key);
 
     let signature = match req.address_type {
-        AddressType::EVM => match sign_evm_message(&private, &req.message).await {
+        AddressType::Evm => match sign_evm_message(&private, &req.message).await {
             Err(err) => return Res::internal_err(anyhow!("sign evm message: {}", err)),
             Ok(value) => value,
         },
-        AddressType::SOL => match sign_sol_message(&private, &req.message).await {
+        AddressType::Sol => match sign_sol_message(&private, &req.message).await {
             Err(err) => return Res::internal_err(anyhow!("sign sol message: {}", err)),
             Ok(value) => value,
         },
