@@ -33,8 +33,8 @@ pub async fn info() -> (StatusCode, Json<Res<InfoRes>>) {
 #[derive(Debug, Serialize, Deserialize, Default, EnumString, Display)]
 pub enum AddressType {
     #[default]
-    EVM,
-    SOL,
+    Evm,
+    Sol,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
