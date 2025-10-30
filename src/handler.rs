@@ -2,7 +2,7 @@ use crate::enclave_state::EnclaveState;
 use crate::helper;
 use crate::helper::{
     build_kms_recipient, clear_vec, decrypt, encrypt, generate_evm_account, generate_sol_account,
-    sign_evm_message, sign_sol_message,
+    sign_evm_message, sign_evm_transaction, sign_sol_message, sign_sol_transaction,
 };
 use crate::response::Res;
 use anyhow::anyhow;
@@ -35,6 +35,13 @@ pub enum AddressType {
     #[default]
     EVM,
     SOL,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, EnumString, Display)]
+pub enum SignatureType {
+    #[default]
+    Message,
+    Transaction,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -131,6 +138,8 @@ pub struct SignReq {
     pub encrypted_data_key: String,
     #[serde(default = "AddressType::default")]
     pub address_type: AddressType,
+    #[serde(default = "SignatureType::default")]
+    pub signature_type: SignatureType,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -194,15 +203,31 @@ pub async fn sign(
 
     clear_vec(key);
 
-    let signature = match req.address_type {
-        AddressType::EVM => match sign_evm_message(&private, &req.message).await {
-            Err(err) => return Res::internal_err(anyhow!("sign evm message: {}", err)),
-            Ok(value) => value,
-        },
-        AddressType::SOL => match sign_sol_message(&private, &req.message).await {
-            Err(err) => return Res::internal_err(anyhow!("sign sol message: {}", err)),
-            Ok(value) => value,
-        },
+    let signature = match (req.address_type, req.signature_type) {
+        (AddressType::EVM, SignatureType::Message) => {
+            match sign_evm_message(&private, &req.message).await {
+                Err(err) => return Res::internal_err(anyhow!("sign evm message: {}", err)),
+                Ok(value) => value,
+            }
+        }
+        (AddressType::EVM, SignatureType::Transaction) => {
+            match sign_evm_transaction(&private, &req.message).await {
+                Err(err) => return Res::internal_err(anyhow!("sign evm transaction: {}", err)),
+                Ok(value) => value,
+            }
+        }
+        (AddressType::SOL, SignatureType::Message) => {
+            match sign_sol_message(&private, &req.message).await {
+                Err(err) => return Res::internal_err(anyhow!("sign sol message: {}", err)),
+                Ok(value) => value,
+            }
+        }
+        (AddressType::SOL, SignatureType::Transaction) => {
+            match sign_sol_transaction(&private, &req.message).await {
+                Err(err) => return Res::internal_err(anyhow!("sign sol transaction: {}", err)),
+                Ok(value) => value,
+            }
+        }
     };
 
     clear_vec(private);
