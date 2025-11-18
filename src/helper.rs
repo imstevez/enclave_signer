@@ -10,6 +10,7 @@ use aws_sdk_kms::types::RecipientInfo;
 use aws_smithy_types::Blob;
 use ethers::core::k256::ecdsa::{SigningKey, VerifyingKey};
 use ethers::signers::{LocalWallet, Signer};
+use ethers::types::H256;
 use ethers::utils;
 use ethers::utils::rlp;
 use solana_sdk::signature::{Keypair, SeedDerivable, Signer as SolSigner};
@@ -93,17 +94,26 @@ pub async fn sign_evm_message(private: &[u8], message: &str) -> Result<Vec<u8>> 
     Ok(signature.to_vec())
 }
 
-pub async fn sign_sol_message(private: &[u8], message: &str) -> Result<Vec<u8>> {
-    let keypair = Keypair::from_seed(private).map_err(|e| anyhow!(e.to_string()))?;
+pub async fn sign_evm_data(private: &[u8], data: &str) -> Result<Vec<u8>> {
+    let wallet = LocalWallet::from_bytes(private)?;
 
-    let message_bytes = match hex::decode(message.strip_prefix("0x").unwrap_or(message)) {
-        Ok(bytes) => bytes,
-        Err(_) => message.as_bytes().to_vec(),
-    };
+    let data_bytes = hex::decode(data.strip_prefix("0x").unwrap_or(data))?;
 
-    let signature = keypair.try_sign_message(&message_bytes)?;
+    let signature = wallet.sign_message(&data_bytes).await?;
 
-    Ok(signature.as_array().to_vec())
+    Ok(signature.to_vec())
+}
+
+pub async fn sign_evm_hash(private: &[u8], hash: &str) -> Result<Vec<u8>> {
+    let wallet = LocalWallet::from_bytes(private)?;
+
+    let hash_bytes = hex::decode(hash.strip_prefix("0x").unwrap_or(hash))?;
+
+    let hash = H256::from_slice(&hash_bytes);
+
+    let signature = wallet.sign_hash(hash)?;
+
+    Ok(signature.to_vec())
 }
 
 pub async fn sign_evm_transaction(private: &[u8], transaction: &str) -> Result<Vec<u8>> {
@@ -118,12 +128,23 @@ pub async fn sign_evm_transaction(private: &[u8], transaction: &str) -> Result<V
     Ok(signature.to_vec())
 }
 
-pub async fn sign_sol_transaction(private: &[u8], transaction: &str) -> Result<Vec<u8>> {
+
+pub async fn sign_sol_message(private: &[u8], message: &str) -> Result<Vec<u8>> {
     let keypair = Keypair::from_seed(private).map_err(|e| anyhow!(e.to_string()))?;
 
-    let transaction_bytes = hex::decode(transaction.strip_prefix("0x").unwrap_or(transaction))?;
+    let message_bytes = message.as_bytes().to_vec();
 
-    let signature = keypair.try_sign_message(&transaction_bytes)?;
+    let signature = keypair.try_sign_message(&message_bytes)?;
+
+    Ok(signature.as_array().to_vec())
+}
+
+pub async fn sign_sol_data(private: &[u8], data: &str) -> Result<Vec<u8>> {
+    let keypair = Keypair::from_seed(private).map_err(|e| anyhow!(e.to_string()))?;
+
+    let data_bytes = hex::decode(data.strip_prefix("0x").unwrap_or(data))?;
+
+    let signature = keypair.try_sign_message(&data_bytes)?;
 
     Ok(signature.as_array().to_vec())
 }
@@ -205,6 +226,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(signature_result, signature_target);
+    }
+
+    #[tokio::test]
+    async fn test_sign_evm_hash() {
+        let hash = "0xfe546e16fc3aecb9db7990f2e1904299bb697b02c43d3dd4c2a8f2d88561357f";
+        let private = "fbd19a3c3501904fe81a1593fb10fe948a5523dae77e8ea5ea36e816578a3160";
+
+        let signature_result = sign_evm_hash(&hex::decode(private).unwrap(), hash)
+            .await
+            .unwrap();
+
+        println!("result: {}", hex::encode(signature_result));
     }
 
     #[tokio::test]

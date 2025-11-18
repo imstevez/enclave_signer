@@ -2,7 +2,8 @@ use crate::enclave_state::EnclaveState;
 use crate::helper;
 use crate::helper::{
     build_kms_recipient, clear_vec, decrypt, encrypt, generate_evm_account, generate_sol_account,
-    sign_evm_message, sign_evm_transaction, sign_sol_message, sign_sol_transaction,
+    sign_evm_data, sign_evm_hash, sign_evm_message, sign_evm_transaction, sign_sol_data,
+    sign_sol_message,
 };
 use crate::response::Res;
 use anyhow::anyhow;
@@ -41,7 +42,9 @@ pub enum AddressType {
 pub enum SignatureType {
     #[default]
     Message,
+    Data,
     Transaction,
+    Hash,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -210,6 +213,18 @@ pub async fn sign(
                 Ok(value) => value,
             }
         }
+        (AddressType::EVM, SignatureType::Data) => {
+            match sign_evm_data(&private, &req.message).await {
+                Err(err) => return Res::internal_err(anyhow!("sign evm data: {}", err)),
+                Ok(value) => value,
+            }
+        }
+        (AddressType::EVM, SignatureType::Hash) => {
+            match sign_evm_hash(&private, &req.message).await {
+                Err(err) => return Res::internal_err(anyhow!("sign evm hash: {}", err)),
+                Ok(value) => value,
+            }
+        }
         (AddressType::EVM, SignatureType::Transaction) => {
             match sign_evm_transaction(&private, &req.message).await {
                 Err(err) => return Res::internal_err(anyhow!("sign evm transaction: {}", err)),
@@ -222,8 +237,20 @@ pub async fn sign(
                 Ok(value) => value,
             }
         }
+        (AddressType::SOL, SignatureType::Data) => {
+            match sign_sol_data(&private, &req.message).await {
+                Err(err) => return Res::internal_err(anyhow!("sign sol data: {}", err)),
+                Ok(value) => value,
+            }
+        }
+        (AddressType::SOL, SignatureType::Hash) => {
+            match sign_sol_data(&private, &req.message).await {
+                Err(err) => return Res::internal_err(anyhow!("sign sol hash: {}", err)),
+                Ok(value) => value,
+            }
+        }
         (AddressType::SOL, SignatureType::Transaction) => {
-            match sign_sol_transaction(&private, &req.message).await {
+            match sign_sol_data(&private, &req.message).await {
                 Err(err) => return Res::internal_err(anyhow!("sign sol transaction: {}", err)),
                 Ok(value) => value,
             }
