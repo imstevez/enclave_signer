@@ -128,9 +128,8 @@ pub async fn sign_evm_transaction(private: &[u8], transaction: &str) -> Result<V
     Ok(signature.to_vec())
 }
 
-
 pub async fn sign_sol_message(private: &[u8], message: &str) -> Result<Vec<u8>> {
-    let keypair = Keypair::from_seed(private).map_err(|e| anyhow!(e.to_string()))?;
+    let keypair = Keypair::try_from(private).map_err(|e| anyhow!(e.to_string()))?;
 
     let message_bytes = message.as_bytes().to_vec();
 
