@@ -2,7 +2,7 @@ use crate::enclave_state::EnclaveState;
 use crate::helper;
 use crate::helper::{
     build_kms_recipient, clear_vec, decrypt, encrypt, generate_evm_account, generate_sol_account,
-    sign_evm_data, sign_evm_hash, sign_evm_message, sign_evm_transaction, sign_sol_data,
+    sign_evm_data, sign_evm_hash, sign_evm_message, sign_sol_data,
     sign_sol_message,
 };
 use crate::response::Res;

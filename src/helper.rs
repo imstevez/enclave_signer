@@ -13,7 +13,7 @@ use ethers::signers::{LocalWallet, Signer};
 use ethers::types::H256;
 use ethers::utils;
 use ethers::utils::rlp;
-use solana_sdk::signature::{Keypair, SeedDerivable, Signer as SolSigner};
+use solana_sdk::signature::{Keypair, Signer as SolSigner};
 
 pub fn to_err<T: ToString>(e: T) -> anyhow::Error {
     anyhow!(e.to_string())
