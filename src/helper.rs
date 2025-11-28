@@ -13,7 +13,7 @@ use ethers::signers::{LocalWallet, Signer};
 use ethers::types::H256;
 use ethers::utils;
 use ethers::utils::rlp;
-use solana_sdk::signature::{Keypair, Signer as SolSigner};
+use solana_sdk::signature::{Keypair, SeedDerivable, Signer as SolSigner};
 
 pub fn to_err<T: ToString>(e: T) -> anyhow::Error {
     anyhow!(e.to_string())
@@ -129,7 +129,7 @@ pub async fn sign_evm_transaction(private: &[u8], transaction: &str) -> Result<V
 }
 
 pub async fn sign_sol_message(private: &[u8], message: &str) -> Result<Vec<u8>> {
-    let keypair = Keypair::try_from(private).map_err(|e| anyhow!(e.to_string()))?;
+    let keypair = Keypair::from_seed(private).map_err(|e| anyhow!(e.to_string()))?;
 
     let message_bytes = message.as_bytes().to_vec();
 
@@ -139,7 +139,7 @@ pub async fn sign_sol_message(private: &[u8], message: &str) -> Result<Vec<u8>> 
 }
 
 pub async fn sign_sol_data(private: &[u8], data: &str) -> Result<Vec<u8>> {
-    let keypair = Keypair::try_from(private).map_err(|e| anyhow!(e.to_string()))?;
+    let keypair = Keypair::from_seed(private).map_err(|e| anyhow!(e.to_string()))?;
 
     let data_bytes = hex::decode(data.strip_prefix("0x").unwrap_or(data))?;
 
