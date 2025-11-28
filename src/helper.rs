@@ -139,7 +139,7 @@ pub async fn sign_sol_message(private: &[u8], message: &str) -> Result<Vec<u8>> 
 }
 
 pub async fn sign_sol_data(private: &[u8], data: &str) -> Result<Vec<u8>> {
-    let keypair = Keypair::from_seed(private).map_err(|e| anyhow!(e.to_string()))?;
+    let keypair = Keypair::try_from(private).map_err(|e| anyhow!(e.to_string()))?;
 
     let data_bytes = hex::decode(data.strip_prefix("0x").unwrap_or(data))?;
 

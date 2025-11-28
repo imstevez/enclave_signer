@@ -43,7 +43,6 @@ pub enum SignatureType {
     #[default]
     Message,
     Data,
-    Transaction,
     Hash,
 }
 
@@ -225,12 +224,6 @@ pub async fn sign(
                 Ok(value) => value,
             }
         }
-        (AddressType::EVM, SignatureType::Transaction) => {
-            match sign_evm_transaction(&private, &req.message).await {
-                Err(err) => return Res::internal_err(anyhow!("sign evm transaction: {}", err)),
-                Ok(value) => value,
-            }
-        }
         (AddressType::SOL, SignatureType::Message) => {
             match sign_sol_message(&private, &req.message).await {
                 Err(err) => return Res::internal_err(anyhow!("sign sol message: {}", err)),
@@ -246,12 +239,6 @@ pub async fn sign(
         (AddressType::SOL, SignatureType::Hash) => {
             match sign_sol_data(&private, &req.message).await {
                 Err(err) => return Res::internal_err(anyhow!("sign sol hash: {}", err)),
-                Ok(value) => value,
-            }
-        }
-        (AddressType::SOL, SignatureType::Transaction) => {
-            match sign_sol_data(&private, &req.message).await {
-                Err(err) => return Res::internal_err(anyhow!("sign sol transaction: {}", err)),
                 Ok(value) => value,
             }
         }
